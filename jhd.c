@@ -1,16 +1,19 @@
 /*
  *  Jhd - Japanese Hexdecimal Dump
  *
- *    Written by Masato Minda (masat-m@ascii.junet)
+ *    Written by Masato Minda
+ *               minmin@strauss.uec.junet
  *
  *    Created Sep. 11, 1986  Version 1.0
  *            Sep. 14, 1988  Version 2.0
  *    modified
- *      Jan. 20, 1989 Ver. 2.1
- *              little bug fix in octal-word.
+ *      Jan. 20, 1989  Ver. 2.1
+ *        little bug fix in octal-word.
+ *      Feb. 23, 1989  Ver. 2.2
+ *        correct offset, file is stdin.
  */
 static char rcsid[] =
-	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.1 1989/01/20 17:41:38 minmin Exp $";
+	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.2 1989/02/24 17:09:13 minmin Exp $";
 /*
  *  definition of System type
  */
@@ -18,7 +21,7 @@ static char rcsid[] =
 #define  OS9     0        /*  in OS9 68000 */
 #define  LSI     0        /*  in LSI-C  */
 
-#define  EUC     0        /*  if set, kanji code is UEC (Shift-JIS default)  */
+#define  EUC     1        /*  if set, kanji code is UEC (Shift-JIS default)  */
 
 #include  <stdio.h>
 #include  <ctype.h>
@@ -730,7 +733,7 @@ FILE   *fp;
 	if (Offset == 0L) {
 		return;
 	}
-	offset = Offset & (Dwidth - 1);
+	offset = Offset & ~(Dwidth - 1);
 	while (offset > (long)BSIZE) {
 		if (fread(Buf, 1, BSIZE, fp) < BSIZE) {
 			toobig ();
@@ -855,6 +858,8 @@ char  **argv;
 		chkofst (argv[1] + 1);
 		--argc;
 		++argv;
+	} else if (argc > 2 && argv[2][0] == '+') {
+		chkofst (argv[2] + 1);
 	}
 	if (argc == 1 && isatty(fileno(stdin))) {
 		usage ();
