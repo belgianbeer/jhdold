@@ -5,9 +5,12 @@
  *
  *    Created Sep. 11, 1986  Version 1.0
  *            Sep. 14, 1988  Version 2.0
+ *    modified
+ *      Jan. 20, 1989 Ver. 2.1
+ *              little bug fix in octal-word.
  */
 static char rcsid[] =
-	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.0 1988/09/14 12:00:00 masat-m Exp $";
+	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.1 1989/01/20 17:41:38 minmin Exp $";
 /*
  *  definition of System type
  */
@@ -187,7 +190,7 @@ register int     n;
 
 putoct (n, w)
 register long   n;
-register int    w;
+int    w;
 {
 	register int     c;
 
@@ -200,7 +203,7 @@ register int    w;
 
 puthex (n, w)
 register long   n;
-register int    w;
+int    w;
 {
 	register int     c;
 
@@ -208,11 +211,8 @@ register int    w;
 		puthex (n >> 4, w - 1);
 	}
 	c = n & 0xf;
-	if (c <= 9) {
-		putchar (c + '0');
-	} else {
-		putchar (c + '7');
-	}
+	c += c <= 9 ? '0': '7';
+	putchar (c);
 }
 
 /*
@@ -508,7 +508,7 @@ register int     adv;
 	case 6:  /*  octal dump in word  */
 	case 7:
 	case 8:
-		putspc (adv * 7);
+		putspc ((adv / 2) * 7);
 		octdmp0 (buf, size);
 		break;
 
