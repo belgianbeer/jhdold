@@ -1,224 +1,192 @@
 /*
- *  Jhd - japanese hexdecimal dump
+ *  Jhd - Japanese Hexdecimal Dump
  *
- *    Written by Masato Minda
+ *    Written by Masato Minda (masat-m@ascii.junet)
  *
- *    Copyright (C) 1986, 1987 by Masato Minda
- *
- *    Created Sep. 11, 1986
- *
- *    Modified
- *      Sep. 25, 1986  change buffer size for vax
- *      Oct. 21, 1986  change compile switch
- *      Oct. 28, 1986  adjust isascii
- *      Nov. 11, 1986  bug fix input console
- *      Dec. 16, 1986  Usage message with Illegal option
- *      Jan. 31, 1987  change Usage message
- *      Mar. 21, 1987  add octal dump mode (1.4)
- *      Apr. 20, 1987  bug fix for OS9 and dmpmain (1.41)
- *      Apr. 27, 1987  change skip data mode (1.5)
- *      Apr. 30, 1987  change putchar on MSC (1.51)
- *      Mar.  8, 1987  bug fix 1.51 (1.511)
- *      Mar. 19, 1987  bug fix 1.51 (1.6)
- *      Jun.  9, 1987  flush stdout after flush, add OCTAL flug (1.7)
+ *    Created Sep. 11, 1986  Version 1.0
+ *            Sep. 14, 1988  Version 2.0
  */
-
-static char sccsid[] = "@(#)jhd.c	1.7 (MinMin) 6/09/87";
-
-	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 1.1 1988/09/08 20:44:20 masat-m Exp $";
+static char rcsid[] =
+	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.0 1988/09/14 12:00:00 masat-m Exp $";
 /*
  *  definition of System type
-#ifndef  KMES                /*  for kanji kana messages  */
-#	define  KMES
-#endif
-#ifdef  UNIX
-#	undef   UNIX
-#endif
-#ifdef  OS9K
-#	undef   OS9K
-#endif
-#ifdef  MSC
-#	undef   MSC
-#endif
+ */
+#define  UNIX    1        /*  in UNIX  */
+#define  OS9     0        /*  in OS9 68000 */
 #define  LSI     0        /*  in LSI-C  */
-#define  UNIX                /*  SET SYSTEM TYPE  */
-#define  OCTAL               /*  OCTAL MODE SELECT  */
-#define  EUC     0        /*  if set, kanji code is JAE (Shift-JIS default)  */
+
+#define  EUC     0        /*  if set, kanji code is UEC (Shift-JIS default)  */
 
 #include  <stdio.h>
-#ifdef  MSC
-#	include  <fcntl.h>
-#	include  <sys/types.h>
-#	include  <sys/stat.h>
-#	include  <io.h>
-#endif
-#ifdef  OS9K
-#	include  <module.h>
-#endif
 #include  <ctype.h>
+
+#define  BSIZE      16384       /*  input buffer size */
+
+#define  T_ASCII        0       /*  ascii terminal  */
+#define  T_KANA         1       /*  kana terminal  */
+#define  T_KANJI        2       /*  kanji terminal  */
+
+#define  HEXDMP         0       /*  dump in hexdecimal  */
+#define  CHRDMP         1       /*  dump in charactor  */
+#define  OCTDMP         2       /*  dump in octal word  */
+#define  OCTBYT         3       /*  dump in octal byte  */
+#define  OCTREV         4       /*  dump in octal reverse  */
+
+#define  KSHIFT      0x8e       /*  JAE kana shift in  */
+
+#if  OS9
+#	define  EXSTAT   0
+#	define  isatty(n)  (_gs_size(n) == -1)
+#else
+#	define  EXSTAT   1
+#endif
+
+#if   LSI
+	unsigned char    Ibuf[BSIZE];
+#endif
+
+unsigned char    Buf[BSIZE];             /*  input buffer  */
+unsigned char    Tbuf[64];
+unsigned char   *Lbuf = NULL;            /*  last 16 byte  */
+
+char   *Prgnam = "jhd";
+long    Offset;                 /*  dump offset  */
+long    Addr;                   /*  current address  */
+int     Bsize = BSIZE;
+int     Admode = 0;             /*  address display mode  */
+FILE   *Fp;                     /*  file pointer  */
+int     Ttype;                  /*  terminal type  */
+int     Skip = 0;               /*  skip next data  (kanji2 printed)  */
+int     Dwidth = 16;            /*  dump width in byte  */
+int     Putast;                 /*  '*' display flag  */
+int     Mode = HEXDMP;          /*  dump mode  */
+int     Vflag = 0;              /*  visual option  */
+
+#if  LSI
+	extern unsigned char    _osmajor;    /*  MS-DOS version number  */
+#endif
+
+#if  EUC
+
+int     Kskip = 0;
+
+#ifdef  iskanji
+#	undef  iskanji
+#endif
+#ifdef  iskanji2
+#	undef  iskanji2
+#endif
+#ifdef iskana
+#	undef  iskana
+#endif
+
+iskanji(c)
+register int    c;
+{
+	c &= 0xff;
+	return (c >= 0xa1 && c <= 0xfe);
+}
+
+#define  iskana(c)	(c == KSHIFT)
+
+iskana2(c)
+register int     c;
+{
+	c &= 0xff;
+	return (c >= 0xa1 && c <= 0xdf);
+}
+
+#else  /*  EUC  */
+
 /*
  *   for kanji kana mode
  */
-#ifdef KMES
-#	ifndef  iskanji2
-		char _ktype[0x100] = {
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-			0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00,
-			0x02, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x02, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-			0x03, 0x03, 0x03, 0x03, 0x03, 0x00, 0x00, 0x00
-		};
-#		define  iskanji2(c)    (_ktype[(unsigned char)(c)] & 0x02)
-#	endif
-#	ifndef  iskanji
-#		define  iskanji(c)     (_ktype[(unsigned char)(c)] & 0x01)
-#	endif
-#	ifndef  iskana
-#		define  iskana(c)      (_ktype[(unsigned char)(c)] & 0x04)
-#	endif
-#else
-#	ifdef  iskana
-#		undef  iskana
-#	endif
-#	ifdef  iskanji
-#		undef  iskanji
-#	endif
-#	ifdef  iskanji2
-#		undef  iskanji2
-#	endif
-#	define  iskana(c)    ((c),0)
-#	define  iskanji(c)   ((c),0)
-#	define  iskanji2(c)  ((c),0)
+#ifndef  iskanji
+int    iskanji(c)
+register int    c;
+{
+	c &= 0xff;
+	return (c >= 0x81 && c <= 0x9f || c >= 0xe0 && c <= 0xfc);
+}
 #endif
-#define  BSIZE      16384       /*  input buffer size */
-#define  BSIZE   32752
-#define  ASCII   1
-#define  KANA    2
-#define  KANJI   4
-#define  T_KANJI        2       /*  kanji terminal  */
-#ifdef  OS9K
-#	define  STAT   0
-#	define  isatty(d)  (_gs_size(d) == -1)
-#	define  EXSTAT   0
-#	define  STAT   1
-#	define  EXSTAT   1
-#endif
-char   *Buf;                /*  input buffer  */
-char   *Lbuf = NULL;        /*  last 16 byte  */
 
-long    Addr;                   /*  current address  */
-int     Skip;               /*  skip next data  (kanji2 printed)  */
-int     Fskip;              /*  buffer boundary Skip  */
-int     Putast;             /*  '*' display flag  */
-int     Bflag;              /*  byte octal  */
-int     Cflag;              /*  charactor only flag  */
-int     Oflag;              /*  octal mode  */
-int     Rflag;              /*  byte swap flag  */
-int     Vflag;              /*  visual option  */
-int     Tmode;              /*  terminal type  */
-int     Vflag = 0;              /*  visual option  */
-#ifdef  MSC
-#	ifdef putchar
-#		undef  putchar
-#	endif
+#ifndef  iskanji2
+int    iskanji2(c)
+register int    c;
+{
+	c &= 0xff;
+	return (c >= 0x40 && c <= 0x7e || c >= 0x80 && c <= 0xfc);
+}
 #endif
-char     Obuf[BUFSIZ];
-int      Ocnt = BUFSIZ;
-char    *Opt = Obuf;
-#if  EUC
-putchar (c)
-int     c;
+
+#ifndef  iskana
+int    iskana(c)
 register int    c;
-	*Opt++ = (char)c;
-	--Ocnt;
-	if (Ocnt == 0) {
-		write (fileno (stdout), Obuf, BUFSIZ);
-		Ocnt = BUFSIZ;
-		Opt = Obuf;
-	}
-	return (c >= 0xa1 && c <= 0xfe);
-}
-obflush ()
-register int     c;
-	write (fileno (stdout), Obuf, BUFSIZ - Ocnt);
-	Ocnt = BUFSIZ;
-	Opt = Obuf;
+{
+	c &= 0xff;
 	return (c >= 0xa1 && c <= 0xdf);
-#endif    /*   MSC  */
 }
-int     settmode ()
-register int    c;
-#ifdef UNIX
+#endif
+
+#endif  /*  EUC  */
+
+/*
+ *  set_ttype - check terminal type
+ */
+set_ttype ()
+{
 #if  UNIX || OS9
 	char   *getenv ();
 	char   *p;
 
-		return ASCII;
-	}
-	if (!strcmp (p, "mskanji") || !strcmp (p, "jiskanji")) {
-		return KANJI;
-	} else if (!strcmp (p, "kana")) {
-		return KANA;
-#endif
-		return ASCII;
-		Ttype = T_ASCII;
-	Ttype = T_KANJI;
-#ifdef OS9K
-	char   *getenv ();
-	char   *p;
-}
 	if ((p = getenv ("TTYPE")) == NULL) {
-		return ASCII;
-		++s;
-	if (!strcmp (p, "mskanji") || !strcmp (p, "jiskanji")) {
-		return KANJI;
-	} else if (!strcmp (p, "kana")) {
-		return KANA;
+		Ttype = T_ASCII;
+	} else if (!strcmp(p, "mskanji") || !strcmp(p, "jiskanji")) {
+		Ttype = T_KANJI;
+#if  EUC == 0
+	} else if (!strcmp(p, "kana")) {
+		Ttype = T_KANA;
+#endif
 	} else {
-		return ASCII;
+		Ttype = T_ASCII;
+	}
+#endif  /*  UNIX || OS9  */
+#if  LSI
+	Ttype = T_KANJI;
+#endif
+}
+
+/*
+ *  Kindex returns a pointer to the first occurrence of character
+ *  c in string s, or zero if c does not occur in  the string.
+ *  checks at shift-JIS code.
+ */
+char   *kindex(s, c)
+register char   *s;
+register int     c;
+{
+	while (*s) {
+		if (*s == c) {
+			return s;
+		}
+		if (iskanji(*s)) {
+			++s;
+		}
+		++s;
+	}
+	return NULL;
+}
+
+putspc (n)
+register int     n;
+{
+	while (n--) {
 		putchar (' ');
-#endif
-#ifdef  MSC
-#	ifdef  KMES
-		return KANJI;
-#	else
-		return ASCII;
-#	endif
-#endif
 	}
 }
-#ifdef  OCTAL
 
-
-long   n;
-int    w;
+putoct (n, w)
+register long   n;
 register int    w;
 {
 	register int     c;
@@ -229,11 +197,9 @@ register int    w;
 	c = n & 0x7;
 	putchar (c + '0');
 }
-#endif
 
-
-long   n;
-int    w;
+puthex (n, w)
+register long   n;
 register int    w;
 {
 	register int     c;
@@ -248,20 +214,12 @@ register int    w;
 		putchar (c + '7');
 	}
 }
-putspc (n)
-register int    n;
-{
-	while (n--) {
-		putchar (' ');
-	}
-}
 
-
- *  chksame - check 16 byte same data
+/*
  *  chksame - check n byte same data
-chksame (new, old, n)
-register char   *new;
-register char   *old;
+ */
+int    chksame(new, old, n)
+register unsigned char   *new;
 register unsigned char   *old;
 register int     n;
 {
@@ -275,328 +233,617 @@ register int     n;
 	}
 	return 1;
 }
-#ifdef  OCTAL
+
 #if  EUC
 
- * odmp - dump octal
+/*
  *  dmpkanji - dump in kanji with JAE-Kanji
-odmp (size, adr, offset)
-unsigned char   *base;
-long    adr;
-long    offset;
-int     size;
-	int   i, j, start, skip1, skip2;
-}
-	start = skip1 = 0;
-	if (offset > (long)size & 0xffff) {
-		fputs (Prgnam, stderr);
-		fputs (": Offset too big!\n", stderr);
-		exit (STAT);
-	} else {
-		start = offset & ~0xf;
-		adr += start;
-		skip2 = skip1 = offset & 0xf;
+ */
+dmpkanji (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	register int    c;
+
+	putchar (' ');
+	while (size--) {
+		c = *base++;
+		if (Skip || Kskip) {
+			Kskip = Skip = 0;
+			putchar (' ');
+		} else if (size == 0 && iskanji(c)) {
+			Skip = c;
+		} else if (size == 0 && iskana(c)) {
+			Kskip = c;
+		} else if (iskanji(c) && iskanji(*base)) {
+			putchar (c);
+			putchar (*base);
+			--size;
+			++base;
+		} else if (iskana(c) && iskana2(c)) {
+			putchar (c);
+			putchar (*base);
+			--size;
+			++base;
+		} else if (isprint(c)) {
+			putchar (c);
+		} else {
+			putchar ('.');
 		}
-	Buf[size] = '\0';
-	for (i = start; i < size; i += 16, adr += 16) {
-		if (!Vflag && (i != start ?
-		      chksame (Buf + i, Buf + (skip2 > 0? skip2: i - 16), 16) :
-		      chksame (Buf + i, Lbuf, 16))) {
-			if (!Putast) {
-				putchar ('*');
-#ifdef  MSC
-				putchar ('\r');
-#endif
-				putchar ('\n');
-#ifdef  MSC
-				obflush ();
-#endif
-				Putast = 1;
-			}
-			continue;
+	}
+}
+
+dmpkana (base, size)
+unsigned char   *base;
+int     size;
+{
+	/*  not called in EUC  */
+}
+
+#else  /*  EUC  */
+
+/*
+ *  dmpkanji - dump in kanji with Shift-JIS
+ */
+dmpkanji (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	register int    c;
+
+	putchar (' ');
+	while (size--) {
+		c = *base++;
+		if (Skip) {
+			Skip = 0;
+			putchar (' ');
+		} else if (size == 0 && iskanji(c)) {
+			Skip = c;
+		} else if (iskanji(c) && iskanji2(*base)) {
+			putchar (c);
+			putchar (*base);
+			--size;
+			++base;
+		} else if (iskana(c) || isprint(c)) {
+			putchar (c);
+		} else {
 			putchar ('.');
-		skip2 = skip1;
-		Putast = 0;
-		putoct (adr, 11);
-		putspc ((Bflag ? skip1 * 4 : skip1 / 2 * 7) + 1);
-		for (j = skip1; j < 16 && j + i < size; j += 2 - Bflag) {
-			putspc (1);
-			if (Bflag) {
-				putoct ((long)Buf[i + j] & 0xff, 3);
-			} else if (Rflag) {
-				putoct ((long)((Buf[i + j + 1] << 8) & 0xff00 |
-						Buf[i + j] & 0xff), 6);
-			} else {
-				putoct ((long)((Buf[i + j] << 8) & 0xff00 |
-						Buf[i + j + 1] & 0xff), 6);
-			}
+		}
+	}
+}
+
+/*
+ *  dmpkana - dump in hankaku katakana
+ */
+dmpkana (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	register int     c;
+
+	putchar (' ');
+	while (size--) {
+		c = *base++;
+		if (isprint(c) || iskana(c)) {
+			putchar (c);
+		} else {
 			putchar ('.');
-		skip1 = 0;
-		if (!Fskip) {
-#ifdef  MSC
-			putchar ('\r');
-#endif
-			putchar ('\n');
+		}
+	}
+}
+
+#endif  /*  EUC  */
+
+/*
+ *  dmpascii - dump in ascii charactor
+ */
+dmpascii (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	register int     c;
+
+	putchar (' ');
+	while (size--) {
+		c = *base++;
+		if (isprint(c)) {
+			putchar (c);
+		} else {
+			putchar ('.');
+		}
+	}
+}
+
+/*
+ *  octdmp0 - dump octal in word
+ */
+octdmp0 (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	while (size > 0) {
+		putchar (' ');
+		putoct ((long)((unsigned)(base[0] << 8) + (unsigned)base[1]), 6);
+		base += 2;
+		size -= 2;
+	}
+}
+
+/*
+ *  octdmp1 - dump octal in byte
+ */
+octdmp1 (base, size, adr)
+register unsigned char   *base;
+register int     size;
+register int     adr;
+{
+	while (size--) {
+		putchar (' ');
+		putoct ((long)((unsigned)*base++), 3);
+		if (++adr == 8) {
 			putchar (' ');
 		}
 	}
 }
-#endif
+
+/*
+ *  octdmp2 - dump octal in reverse word
+ */
+octdmp2 (base, size)
+register unsigned char   *base;
+register int     size;
+{
+	while (size > 0) {
+		putchar (' ');
+		putoct ((long)((unsigned)(base[1] << 8) + (unsigned)base[0]), 6);
+		base += 2;
+		size -= 2;
+	}
 }
 
- * dmp - dump hexdecimal
+/*
  * hdmp - dump hexdecimal
-dmp (size, adr, offset)
-int     size;
-long    adr;
-long    offset;
+ */
+hexdmp (base, size, adr)
+register unsigned char   *base;
+register int     size;
 register int     adr;
-	int   i, j, k, start, skip1, skip2;
-}
-	start = skip1 = skip2 = 0;
-	if (offset > (long)size & 0xffff) {
-		fputs (Prgnam, stderr);
-		fputs (": offset too big!\n", stderr);
-		exit (STAT);
-	} else {
-		start = offset & ~0xf;
-		adr += start;
-		skip2 = skip1 = offset & 0xf;
+{
+	while (size--) {
+		putchar (' ');
+		puthex ((long)((unsigned)*base++), 2);
+		if (++adr == 8) {
+			putchar (' ');
 		}
-	if (Fskip) {
-		if (iskanji2(Buf[0]) && Tmode == KANJI) {
-			putchar (Fskip);
-			putchar (Buf[0]);
-			Skip = 1;
+	}
+}
+
+dmpmode (buf, size, adv)
+register unsigned char   *buf;
+register int     size;
+register int     adv;
+{
+	Putast = 0;
+#if  EUC
+	if (Kskip) {
+		if (iskana2(*buf)) {
+			putchar (Kskip);
+			putchar (*buf);
 			putchar ('\n');
 		} else {
+			putchar ('.');
+			putchar ('\n');
+			Kskip = 0;
+		}
+	}
+	if (Skip) {
+		if (iskanji(*buf)) {
+			putchar (Skip);
+			putchar (*buf);
+			putchar ('\n');
+		} else {
+			putchar ('.');
+			putchar ('\n');
 			Skip = 0;
-		Fskip = 0;
-#ifdef  MSC
-		putchar ('\r');
+		}
+	}
+#else  /*  EUC  */
+	if (Skip) {
+		if (iskanji2(*buf)) {
+			putchar (Skip);
+			putchar (*buf);
+			putchar ('\n');
+		} else {
+			putchar ('.');
+			putchar ('\n');
+			Skip = 0;
+		}
+	}
+#endif  /*  EUC  */
+	if (Admode) {
+		putoct (Addr, 11);
+	} else {
+		puthex (Addr, 8);
+	}
+	putchar (' ');
+	buf += adv;
+	switch (Mode) {
+
+	case 0:  /*  hex dump with ascii */
+		putspc (adv * 3 + (adv >= 8? 1: 0));
+		hexdmp (buf, size, adv);
+		putspc ((Dwidth - (size + adv)) * 3 + ((size + adv) < 8? 2: 1) + adv);
+		dmpascii (buf, size);
+		break;
+
+	case 1:  /*  hex dump with kana */
+		putspc (adv * 3 + (adv >= 8? 1: 0));
+		hexdmp (buf, size, adv);
+		putspc ((Dwidth - (size + adv)) * 3 + ((size + adv) < 8? 2: 1) + adv);
+		dmpkana (buf, size);
+		break;
+	
+	case 2:  /*  hex dump with kanji  */
+		putspc (adv * 3 + (adv >= 8? 1: 0));
+		hexdmp (buf, size, adv);
+		putspc ((Dwidth - (size + adv)) * 3 + ((size + adv) < 8? 2: 1) + adv);
+		dmpkanji (buf, size);
+		break;
+
+	case 3:  /*  char dump in ascii  */
+		putspc (adv);
+		dmpascii (buf, size);
+		break;
+
+	case 4:  /*  char dump in kana  */
+		putspc (adv);
+		dmpkana (buf, size);
+		break;
+
+	case 5:  /*  char dump in kanji  */
+		putspc (adv);
+		dmpkanji (buf, size);
+		break;
+
+	case 6:  /*  octal dump in word  */
+	case 7:
+	case 8:
+		putspc (adv * 7);
+		octdmp0 (buf, size);
+		break;
+
+	case 9:  /*  octal dump in byte  */
+	case 10:
+	case 11:
+		putspc (adv * 4 + (adv >= 8? 1: 0));
+		octdmp1 (buf, size, adv);
+		break;
+
+	case 12: /*  octal dump in reverse word  */
+	case 13:
+	case 14:
+		putspc (adv * 7);
+		octdmp2 (buf, size);
+		break;
+	}
+}
+
+dmpall (buf, size)
+register unsigned char   *buf;
+register int     size;
+{
+	register int     ss;
+
+	ss = Offset - Addr;
+	if (size < Dwidth) {
+		dmpmode (buf, size - ss, ss);
+#if  EUC
+		if (Kskip || Skip) {
+			putchar ('.');
+			Skip = Kskip = 0;
+		}
+#else
+		if (Skip) {
+			putchar ('.');
+			Skip = 0;
 		}
 #endif
+		putchar ('\n');
+		Addr += size;
 		return;
-	for (i = start; i < size; i += 16, adr += 16) {
-		if (!Vflag && (i != start ?
-		      chksame (Buf + i, Buf + (skip2 > 0? skip2: i - 16), 16) :
-		      chksame (Buf + i, Lbuf, 16))) {
-		if (!Vflag && chksame(buf, Lbuf, Dwidth)) {
+	}
+	if (Addr != Offset) {
+		dmpmode (buf, Dwidth - ss, ss);
+#if  EUC 
+		if (!Skip && !Kskip) {
+			putchar ('\n');
+		}
+#else
+		if (!Skip) {
+			putchar ('\n');
+		}
 #endif
-#ifdef  MSC
-				putchar ('\r');
+		Addr += Dwidth;
+		buf += Dwidth;
+		size -= Dwidth;
+	}
+	while (size >= Dwidth) {
+		if (!Vflag && chksame(buf, Lbuf, Dwidth)) {
+			if (!Putast) {
+#if  EUC
+				if (Skip || Kskip) {
+					putchar ('.');
+					putchar ('\n');
+					Skip = Kskip = 0;
+				}
+#else
+				if (Skip) {
+					putchar ('.');
+					putchar ('\n');
+					Skip = 0;
+				}
 #endif
 				putchar ('*');
-#ifdef  MSC
-				obflush ();
-#endif
 				putchar ('\n');
 				Putast = 1;
-			continue;
-		}
-		skip2 = skip1;
-		Putast = 0;
-		puthex (adr, 8);
-		putspc (skip1 * 3 + (skip1 < 9 ? 1 : 2));
-		for (j = skip1; j < 16 && j + i < size; j++) {
-			if (j == 8) {
-				putspc (1);
+			}
+		} else {
+			dmpmode (buf, Dwidth, 0);
+#if  EUC
+			if (!Skip && !Kskip) {
 				putchar ('\n');
-			putspc (1);
-			puthex ((long)Buf[i + j] & 0xff, 2);
-		}
-		while (j < 16) {
-			if (j == 8) {
-				putspc (1);
-				putchar ('\n');
-			putspc (3);
-			++j;
-#endif
-		putspc (skip1 + 2);
-		for (j = skip1; j < 16 && j + i < size; j++) {
-			if (Skip) {
-				if (j == 0) {
-					putspc (1);
-				}
-				Skip = 0;
-				continue;
-			}
-			k = i + j;
-			if (iskanji(Buf[k]) && Tmode == KANJI) {
-				if (k == Bsize - 1) {
-					Fskip = Buf[k];
-					continue;
-				}
-				if (k + 1 < size && iskanji2(Buf[k + 1])) {
-					putchar (Buf[k]);
-					putchar (Buf[k + 1]);
-					Skip = 1;
-					continue;
-				}
-			}
-			if (iskana(Buf[k]) && Tmode != ASCII ||
-			             isprint (Buf[k]) && isascii (Buf[k])) {
-				putchar (Buf[k]);
-			} else {
-				putchar ('.');
-			}
-			Skip = Kskip = 0;
-		skip1 = 0;
-		if (!Fskip) {
-#ifdef  MSC
-			putchar ('\r');
-		}
-			putchar ('\n');
-		}
-		putchar ('\n');
-	Offset = Addr;
-}
-dmpmain (fd, offset)
-int    fd;
-long   offset;
-register unsigned char   *ptr;
-	char   *malloc ();
-	register char   *p0, *p1;
-	int     rsize, i;
-	long    adr;
-	register unsigned char  *bp;
-	adr = 0;
-	if (Oflag && !Bflag) {
-		offset &= ~1;
-		*bp++ = *ptr++;
-	Putast = Fskip = Skip = 0;
-	while ((rsize = read (fd, Buf, Bsize)) > 0) {
-		if (offset < (long)rsize) {
-#ifdef  OCTAL
-			if (Oflag) {
-				odmp (rsize, adr, offset);
-			} else {
-				dmp (rsize, adr, offset);
 			}
 #else
-			dmp (rsize, adr, offset);
-#endif
-			offset = 0;
-			putoct (Addr, 11);
-			offset -= (long)rsize;
-			puthex (Addr, 8);
-		adr += rsize;
-		if (Lbuf == NULL) {
-			Lbuf = malloc (16);
-		}
-		if (Lbuf != NULL) {
-			i = 16;
-			p0 = Lbuf;
-			p1 = rsize > 16? Buf + rsize - 16: Buf;
-			while (i--) {
-				*p0++ = *p1++;
+			if (!Skip) {
+				putchar ('\n');
 			}
-		}
-		putchar ('\n');
-	if (rsize != -1) {
-		dmp (rsize, adr, offset);
-		path = pt + 1;
-	if (!Vflag && Putast) {
-#ifdef  OCTAL
-		if (Oflag) {
-			putoct (adr + rsize - 1, 11);
-		} else {
-			puthex (adr + rsize - 1, 8);
-			*pt += ' ';
-	fputs (" [ -abcjorvO ] [ <file> ] [ +[x|o]<offset>[k] ]\n", stderr);
-		puthex (adr + rsize - 1, 8);
-	fputs (" [ -abcjkorvO ] [ <file> ] [ +[x|o]<offset>[k] ]\n", stderr);
-		putchar ('\n');
-		return;
-#ifdef  MSC
-	obflush ();
 #endif
+		}
+		Lbuf = buf;
+		Addr += Dwidth;
+		buf += Dwidth;
+		size -= Dwidth;
 	}
-}
-long    chkofst (p)
-char   *p;
-FILE   *fp;
-	long    atol ();
-	long    offset;
+	if (size != 0) {
+		dmpmode (buf, size, 0);
+#if  EUC
+		if (Skip || Kskip) {
+			putchar ('.');
+			Skip = Kskip = 0;
+		}
+#else
+		if (Skip) {
+			putchar ('.');
+			Skip = 0;
+		}
+#endif
+		Addr += size;
+		putchar ('\n');
+	}
+	Offset = Addr;
 }
 
-		offset = 0;
-		while (++p, isxdigit (*p)) {
-			if (isdigit (*p)) {
-				offset = (offset << 4) + (*p - '0');
-				Offset = (Offset << 4) + (c - '0');
-				offset = (offset << 4) + (
-				          (islower (*p) ? toupper (*p) : *p)
-				                                  - 'A' + 10);
-				       ((islower(c)? toupper(c): c) - 'A' + 10);
-			c = (unsigned)*p++;
-	} else if (*p == '0' || *p == 'o' || *p == 'O') {
-		offset = 0;
-		while (++p, isdigit (*p)) {
-			offset = ((offset << 3) & ~7L) + ((*p - '0') & 7);
-			++p;
-		}
-		offset = atol (p);
-		while (isdigit (*p)) {
-		while (isdigit(*p)) {
-			++p;
-		}
-	if (offset && (*p == 'K' || *p == 'k')) {
-		offset <<= 10;
-		Offset <<= 10;
-	return offset;
+setlast (ptr)
+register unsigned char   *ptr;
+{
+	register int    n;
+	register unsigned char  *bp;
+
+	n = Dwidth;
+	Lbuf = bp = Tbuf;
+	while (n--) {
+		*bp++ = *ptr++;
 	}
 }
+
+/*
+ *  dump file
+ */
+dmpmain ()
+{
+	register int     size;
+
+	Mode = Mode * 3 + Ttype;
+	Addr = (Offset & ~(Dwidth - 1));
+	while ((size = fread(Buf, 1, BSIZE, Fp)) != 0) {
+		dmpall (Buf, size);
+		setlast (Buf + size - Dwidth);
+	}
+	if (Putast) {
+		--Addr;
+		if (Admode) {
+			putoct (Addr, 11);
+		} else {
+			puthex (Addr, 8);
+		}
+		putchar ('\n');
+	}
+}
+
+/*
+ *  setname return a tail name of path
+ */
+char   *setname(path)
+register char   *path;
+{
+	register char   *pt;
+
+	while ((pt = kindex(path, '/')) != NULL) {
+		path = pt + 1;
+	}
+#if  LSI
+	while ((pt = kindex(path, ':')) != NULL) {
+		path = pt + 1;
+	}
+	while ((pt = kindex(path, '\\')) != NULL) {
+		path = pt + 1;
+	}
+	if (kindex(path, '.') != NULL) {
+		*kindex(path, '.') = '\0';
+	}
+	pt = path;
+	while (*pt) {
+		/* --- program name to lower case --- */
+		if (isupper(*pt)) {
+			*pt += ' ';
+		}
+		++pt;
+	}
+#endif
+	return path;
+}
+
 usage ()
 {
 	fputs ("Usage: ", stderr);
 	fputs (Prgnam, stderr);
-#ifdef  OCTAL
-	fputs (" [ -borv ] [ <file> ] [ +[x|o|0]<offset>[k] ]\n", stderr);
+#if  EUC
+	fputs (" [ -abcjorvO ] [ <file> ] [ +[x|o]<offset>[k] ]\n", stderr);
 #else
-	fputs (" [ -v ] [ <file> ] [ +[x]<offset>[k] ]\n", stderr);
+	fputs (" [ -abcjkorvO ] [ <file> ] [ +[x|o]<offset>[k] ]\n", stderr);
 #endif
-	exit (STAT);
+	exit (EXSTAT);
 }
 
+toobig ()
+{
+	fputs (Prgnam, stderr);
+	fputs (": Offset too large!\n", stderr);
+	exit (EXSTAT);
+}
+
+no_open (name)
+char   *name;
+{
+	fputs (Prgnam, stderr);
+	fputs (": ", stderr);
+	fputs (name, stderr);
+	fputs (": can't open.\n", stderr);
+	exit (EXSTAT);
+}
+
+skipread (fp)
+FILE   *fp;
+{
+	register long   offset;
+
+	if (Offset == 0L) {
+		return;
+	}
+	offset = Offset & (Dwidth - 1);
+	while (offset > (long)BSIZE) {
+		if (fread(Buf, 1, BSIZE, fp) < BSIZE) {
+			toobig ();
+		}
+		offset -= BSIZE;
+	}
+	if (fread(Buf, 1, (int)offset, fp) < (int)offset) {
+		toobig ();
+	}
+}
+
+skipfile (fp)
+FILE   *fp;
+{
+	if (fseek(fp, Offset & ~(Dwidth - 1), 0) != 0) {
+		toobig ();
+		/* --- not reached --- */
+	}
+}
+
+chkofst (p)
+register char   *p;
+{
+	long    atol();
+	register unsigned     c;
+
+	if (*p == 'x' || *p == 'X') {
+		Offset = 0;
+		++p;
+		c = (unsigned)*p++;
+		while (isxdigit(c)) {
+			if (isdigit(c)) {
+				Offset = (Offset << 4) + (c - '0');
+			} else {
+				Offset = (Offset << 4) +
+				       ((islower(c)? toupper(c): c) - 'A' + 10);
+			}
+			c = (unsigned)*p++;
+		}
+	} else if (*p == 'o' || *p == 'O' || *p == '0') {
+		Offset = 0;
+		++p;
+		while (isdigit(*p)) {
+			Offset = ((Offset << 3) & ~7L) + ((*p - '0') & 7);
+			++p;
+		}
+	} else {
+		Offset = atol(p);
+		while (isdigit(*p)) {
+			++p;
+		}
+	}
+	if (Offset && (*p == 'K' || *p == 'k')) {
+		Offset <<= 10;
+	}
+}
 
 main (argc, argv)
 int     argc;
 char  **argv;
-	char   *malloc ();
-	int     fd;
-	long    offset;
-
-#ifdef  UNIX
-	Prgnam = *argv;
+{
+#if  UNIX || OS9
 	Prgnam = setname(*argv);
-#ifdef  OS9K
-	Prgnam = *argv;
+#endif
+#if  LSI
+	if (_osmajor > 2) {
+		/* --- MS-DOS version 3.xx or later --- */
+		Prgnam = setname(*argv);
 	}
-	if ((Buf = malloc (BSIZE + 1)) == NULL) {
-		fputs (Prgnam, stderr);
-		fputs (": not enough core.\n", stderr);
-		exit (STAT);
-	}
-	offset = 0;
-	Vflag = 0;
-	Tmode = settmode ();
-	while (--argc && **++argv == '-') {
+#endif
+	set_ttype();
 	while (--argc && **++argv == '-' && *(*argv + 1) != '\0') {
+		while (*++*argv) switch (**argv) {
 
-			Oflag = Bflag = 1;
+		case 'b':
+			Mode = OCTBYT;
 			Dwidth = 16;
+			continue;
+
+		case 'c':
+			Mode = CHRDMP;
+			Dwidth = 64;
+			continue;
+
+		case 'o':
+			Mode = OCTDMP;
+			Dwidth = 16;
+			continue;
+
+		case 'r':
+			Mode = OCTREV;
+			Dwidth = 16;
+			continue;
+
+		case 'a':
+			Ttype = T_ASCII;
+			continue;
+#if  EUC == 0
+		case 'k':
+			Ttype = T_KANA;
+			continue;
+#endif
+		case 'j':
+			Ttype = T_KANJI;
+			continue;
+
 		case 'v':
 			Vflag = 1;
-			Dwidth = 64;
-#ifdef  OCTAL
+			continue;
 
-			Oflag = 1;
-			Dwidth = 16;
-#endif
-
-			Oflag = Rflag = 1;
-			Dwidth = 16;
+		case 'O':
+			Admode = 1;
+			continue;
 
 		default:
 			usage ();
@@ -604,55 +851,51 @@ char  **argv;
 	}
 	++argc;
 	--argv;
-		offset = chkofst (argv[1] + 1);
+	if (argc > 1 && argv[1][0] == '+') {
 		chkofst (argv[1] + 1);
 		--argc;
 		++argv;
-#ifdef  MSC
-	setmode (fileno (stdout), O_BINARY);
+	}
+	if (argc == 1 && isatty(fileno(stdin))) {
+		usage ();
+		/* --- not reached --- */
+	}
+	if (argc == 1 || argc > 1 && **(argv + 1) == '-') {
+		Fp = stdin;
+#if  LSI
+		Fp->mode |= _BINARY;
 		setvbuf (Fp, Ibuf, _IOFBF, BSIZE);
-	if (argc == 1) {
-		if (isatty (fileno (stdin))) {
-			usage ();
-		}
-#ifdef  MSC
-		setmode (fileno (stdin), O_BINARY);
 #endif
-#ifdef  UNIX
-		Bsize = BUFSIZ;
-#endif
-#ifdef  OS9K
-		Bsize = BUFSIZ;
-#endif
-		dmpmain (fileno (stdin), offset);
+		skipread (stdin);
 		dmpmain ();
 		exit (0);
-	while (--argc) {
-		offset = 0;
-#ifdef  MSC
-		if ((fd = open (*++argv, O_RDONLY | O_BINARY)) == -1) {
+	}
+	--argc;
+#if  OS9
 	if ((Fp = fopen(*++argv, "r")) == NULL && (Fp = fopen(*argv, "d")) == NULL)
-#ifdef  OS9K
-		if ((fd = open (*++argv, 1)) == -1 &&
-			(fd = open (*argv, 0x81)) == -1) {
+#endif
+#if  LSI 
 	if ((Fp = fopen(*++argv, "rb")) == NULL)
-#ifdef UNIX
-		if ((fd = open (*++argv, 0)) == -1) {
+#endif
+#if  UNIX
 	if ((Fp = fopen(*++argv, "r")) == NULL)
-			fputs (Prgnam, stderr);
-			fputs (": can't open ", stderr);
-			fputs (*argv, stderr);
-			fputs (".\n", stderr);
-			continue;
-		}
-		if (argc > 1 && argv[1][0] == '+') {
-			offset = chkofst (argv[1] + 1);
-			--argc;
-			++argv;
-		}
-		dmpmain (fd, offset);
-		close (fd);
+#endif
+	{
+		no_open(*argv);
 		/* --- not reached --- */
+	}
+	if (argc > 1 && argv[1][0] == '+') {
+		chkofst (argv[1] + 1);
+	}
+#if  LSI
+	setvbuf (Fp, Ibuf, _IOFBF, BSIZE);
+#endif
+	if (isatty(fileno(Fp))) {
+		skipread (Fp);
+	} else {
+		skipfile (Fp);
+	}
+	dmpmain ();
 	fclose (Fp);
 	exit (0);
 }
