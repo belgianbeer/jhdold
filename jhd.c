@@ -13,7 +13,7 @@
  *        correct offset, file is stdin.
  */
 static char rcsid[] =
-	"@(#)$Header: /home/minmin/.cvsr/jhdold/jhd.c,v 2.2 1989/02/24 17:09:13 minmin Exp $";
+	"@(#)$Id: jhd.c,v 2.3 1992/06/02 23:35:50 minmin Exp $";
 /*
  *  definition of System type
  */
@@ -21,7 +21,7 @@ static char rcsid[] =
 #define  OS9     0        /*  in OS9 68000 */
 #define  LSI     0        /*  in LSI-C  */
 
-#define  EUC     1        /*  if set, kanji code is UEC (Shift-JIS default)  */
+#define  EUC     1        /*  if set, kanji code is EUC (Shift-JIS default)  */
 
 #include  <stdio.h>
 #include  <ctype.h>
@@ -84,6 +84,9 @@ int     Kskip = 0;
 #endif
 #ifdef iskana
 #	undef  iskana
+#endif
+#ifdef iskana2
+#	undef  iskana2
 #endif
 
 iskanji(c)
