@@ -13,7 +13,7 @@
  *        correct offset, file is stdin.
  */
 static char rcsid[] =
-	"@(#)$Id: jhd.c,v 2.3 1992/06/02 23:35:50 minmin Exp $";
+	"@(#)$Id: jhd.c,v 2.4 1999/01/27 03:30:30 minmin Exp $";
 /*
  *  definition of System type
  */
@@ -25,6 +25,7 @@ static char rcsid[] =
 
 #include  <stdio.h>
 #include  <ctype.h>
+#include  <unistd.h>
 
 #define  BSIZE      16384       /*  input buffer size */
 
@@ -89,8 +90,9 @@ int     Kskip = 0;
 #	undef  iskana2
 #endif
 
+int
 iskanji(c)
-register int    c;
+    register int    c;
 {
 	c &= 0xff;
 	return (c >= 0xa1 && c <= 0xfe);
@@ -98,8 +100,9 @@ register int    c;
 
 #define  iskana(c)	(c == KSHIFT)
 
+int
 iskana2(c)
-register int     c;
+    register int     c;
 {
 	c &= 0xff;
 	return (c >= 0xa1 && c <= 0xdf);
@@ -121,7 +124,7 @@ register int    c;
 
 #ifndef  iskanji2
 int    iskanji2(c)
-register int    c;
+    register int    c;
 {
 	c &= 0xff;
 	return (c >= 0x40 && c <= 0x7e || c >= 0x80 && c <= 0xfc);
@@ -142,6 +145,7 @@ register int    c;
 /*
  *  set_ttype - check terminal type
  */
+void
 set_ttype ()
 {
 #if  UNIX || OS9
@@ -186,7 +190,7 @@ register int     c;
 	return NULL;
 }
 
-putspc (n)
+void putspc (n)
 register int     n;
 {
 	while (n--) {
@@ -194,7 +198,7 @@ register int     n;
 	}
 }
 
-putoct (n, w)
+void putoct (n, w)
 register long   n;
 int    w;
 {
@@ -207,6 +211,7 @@ int    w;
 	putchar (c + '0');
 }
 
+void
 puthex (n, w)
 register long   n;
 int    w;
@@ -245,6 +250,7 @@ register int     n;
 /*
  *  dmpkanji - dump in kanji with JAE-Kanji
  */
+void
 dmpkanji (base, size)
 register unsigned char   *base;
 register int     size;
@@ -279,6 +285,7 @@ register int     size;
 	}
 }
 
+void
 dmpkana (base, size)
 unsigned char   *base;
 int     size;
@@ -291,6 +298,7 @@ int     size;
 /*
  *  dmpkanji - dump in kanji with Shift-JIS
  */
+void
 dmpkanji (base, size)
 register unsigned char   *base;
 register int     size;
@@ -321,6 +329,7 @@ register int     size;
 /*
  *  dmpkana - dump in hankaku katakana
  */
+void
 dmpkana (base, size)
 register unsigned char   *base;
 register int     size;
@@ -343,6 +352,7 @@ register int     size;
 /*
  *  dmpascii - dump in ascii charactor
  */
+void
 dmpascii (base, size)
 register unsigned char   *base;
 register int     size;
@@ -363,6 +373,7 @@ register int     size;
 /*
  *  octdmp0 - dump octal in word
  */
+void
 octdmp0 (base, size)
 register unsigned char   *base;
 register int     size;
@@ -378,6 +389,7 @@ register int     size;
 /*
  *  octdmp1 - dump octal in byte
  */
+void
 octdmp1 (base, size, adr)
 register unsigned char   *base;
 register int     size;
@@ -395,6 +407,7 @@ register int     adr;
 /*
  *  octdmp2 - dump octal in reverse word
  */
+void
 octdmp2 (base, size)
 register unsigned char   *base;
 register int     size;
@@ -410,6 +423,7 @@ register int     size;
 /*
  * hdmp - dump hexdecimal
  */
+void
 hexdmp (base, size, adr)
 register unsigned char   *base;
 register int     size;
@@ -424,6 +438,7 @@ register int     adr;
 	}
 }
 
+void
 dmpmode (buf, size, adv)
 register unsigned char   *buf;
 register int     size;
@@ -534,6 +549,7 @@ register int     adv;
 	}
 }
 
+void
 dmpall (buf, size)
 register unsigned char   *buf;
 register int     size;
@@ -629,6 +645,7 @@ register int     size;
 	Offset = Addr;
 }
 
+void
 setlast (ptr)
 register unsigned char   *ptr;
 {
@@ -645,6 +662,7 @@ register unsigned char   *ptr;
 /*
  *  dump file
  */
+void
 dmpmain ()
 {
 	register int     size;
@@ -699,6 +717,7 @@ register char   *path;
 	return path;
 }
 
+void
 usage ()
 {
 	fputs ("Usage: ", stderr);
@@ -711,6 +730,7 @@ usage ()
 	exit (EXSTAT);
 }
 
+void
 toobig ()
 {
 	fputs (Prgnam, stderr);
@@ -718,6 +738,7 @@ toobig ()
 	exit (EXSTAT);
 }
 
+void
 no_open (name)
 char   *name;
 {
@@ -728,6 +749,7 @@ char   *name;
 	exit (EXSTAT);
 }
 
+void
 skipread (fp)
 FILE   *fp;
 {
@@ -748,6 +770,7 @@ FILE   *fp;
 	}
 }
 
+void
 skipfile (fp)
 FILE   *fp;
 {
@@ -757,6 +780,7 @@ FILE   *fp;
 	}
 }
 
+void
 chkofst (p)
 register char   *p;
 {
@@ -794,6 +818,7 @@ register char   *p;
 	}
 }
 
+void
 main (argc, argv)
 int     argc;
 char  **argv;
@@ -868,7 +893,7 @@ char  **argv;
 		usage ();
 		/* --- not reached --- */
 	}
-	if (argc == 1 || argc > 1 && **(argv + 1) == '-') {
+	if (argc == 1 || (argc > 1 && **(argv + 1) == '-')) {
 		Fp = stdin;
 #if  LSI
 		Fp->mode |= _BINARY;
